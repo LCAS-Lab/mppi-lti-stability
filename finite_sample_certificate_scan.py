@@ -1,15 +1,16 @@
 """Numerical audit of the P1 finite-sample certificate.
 
 This script implements the current manuscript formulas without changing the
-stated theorem.  All denominator and sample-count calculations are performed
+stated theorem. All denominator and sample-count calculations are performed
 in the log domain because the sufficient bounds can be extremely conservative.
 
-The main reported certificate uses the manuscript lower bound
-    Zbar_beta >= det(...)^{-1/2} exp(-||H|| d_beta^2 / lambda).
-For diagnosis only, the script also reports a tighter lower bound obtained by
-retaining the exact positive quadratic correction in the Gaussian integral.
-That tighter diagnostic is NOT the currently stated corollary and should not be
-used in the paper unless the corresponding derivation is explicitly revised.
+The current manuscript lower bound retains the exact Gaussian quadratic
+correction through
+    Gamma_lambda = H/lambda - 2 H Sigma_* H/lambda^2
+                 = (lambda H^{-1} + 2 Sigma_E)^{-1}.
+For historical comparison only, the script also reports the older relaxation
+obtained by dropping the positive correction and using ||H||/lambda. That
+legacy block is NOT the current manuscript certificate.
 """
 import argparse
 import math
@@ -100,12 +101,13 @@ if sign <= 0:
     raise RuntimeError("determinant factor is not positive")
 log_det_prefactor = -0.5*logdet
 
-# Diagnostic-only exact quadratic matrix in the Gaussian exponent:
-# Z = det(...)^{-1/2} exp[-d^T Gamma_lambda d].
+# Exact quadratic matrix in the Gaussian denominator exponent.
 Gamma_lambda = H/lam - (2.0/lam**2) * H @ Sigma_star @ H
 Gamma_lambda = 0.5*(Gamma_lambda + Gamma_lambda.T)
+Gamma_alt = np.linalg.inv(lam*np.linalg.inv(H) + 2.0*Sigma_E)
 Gamma_eigs = np.linalg.eigvalsh(Gamma_lambda)
 Gamma_norm = float(np.linalg.norm(Gamma_lambda, 2))
+Gamma_identity_residual = float(np.max(np.abs(Gamma_lambda-Gamma_alt)))
 
 
 def logaddexp_many(vals):
@@ -181,17 +183,18 @@ print(f"  V(x0)={V0:.6f}, ||L_lambda||={L_norm:.6f}, C_e,lambda={Ce:.6f}, C_w^(0
 print(f"  q_lambda={q_lambda:.6f}, rho_lambda={rho_lambda:.6f}, ||H||={H_norm:.6f}, "
       f"||H^(-1)F^T||={HinvFt_norm:.6f}")
 print(f"  log(det prefactor)={log_det_prefactor:.6f}")
-print(f"  diagnostic Gamma_lambda eig range=[{Gamma_eigs.min():.6f}, {Gamma_eigs.max():.6f}], "
+print(f"  Gamma_lambda eig range=[{Gamma_eigs.min():.6f}, {Gamma_eigs.max():.6f}], "
       f"||Gamma_lambda||={Gamma_norm:.6f}")
+print(f"  Gamma identity residual={Gamma_identity_residual:.3e}")
 
 rows_manuscript = print_block(
-    "CURRENT MANUSCRIPT BOUND: exp(-||H|| d_beta^2/lambda)", H_norm/lam)
-rows_gamma = print_block(
-    "DIAGNOSTIC ONLY: retain exact quadratic correction and use ||Gamma_lambda||", Gamma_norm)
+    "CURRENT MANUSCRIPT BOUND: exact Gamma_lambda quadratic exponent", Gamma_norm)
+rows_legacy = print_block(
+    "LEGACY DIAGNOSTIC ONLY: drop positive correction and use ||H||/lambda", H_norm/lam)
 
 print("\nInterpretation")
 print("-"*118)
-print("  1) The first block is the certificate actually stated in the current manuscript.")
-print("  2) The second block is diagnostic only; it does not alter the theorem or corollary.")
+print("  1) The first block is the certificate stated in the repaired manuscript.")
+print("  2) The second block is retained only to quantify the conservatism removed by the Gamma_lambda sharpening.")
 print("  3) Very large log10(M*) values indicate conservatism of the sufficient uniform bound, not an empirical instability threshold.")
 print("  4) Do not exponentiate log10(M*) when it is large; report it in logarithmic form during the audit.")
