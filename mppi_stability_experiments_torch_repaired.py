@@ -167,17 +167,9 @@ vals,vecs=np.linalg.eigh(Sigma_lqr_ss_np); th=np.linspace(0,2*np.pi,361); circ=n
 ellipse=vecs@((2*np.sqrt(np.maximum(vals,0)))[:,None]*circ)
 
 # EXP 4
-sec("Experiment 4: Finer Low-M Empirical Sweep")
-FINE=[5,10,15,20,30,50,75,100,150,200]; fine=[]; n4=60 if args.quick else 300
-for M in FINE:
-    qh,rh=estimate_decay_rate(M,n4,20,3); fine.append((M,qh,rh)); print(f"  M={M:4d}: rho_hat={rh:.5f}")
-hits=[r for r in fine if np.isfinite(r[2]) and r[2]<0.99]; empirical_M=hits[0][0] if hits else None
-print(f"  First grid hit rho_hat<0.99: {empirical_M}; diagnostic only, not theorem M_star.")
-
-# EXP 5
-sec("Experiment 5: ESS Diagnostic")
-gen=torch.Generator(device=device).manual_seed(5); norm5,ess=simulate_norms(x0,500,sw0,T_sim,gen); ess=ess/500
-print(f"  mean ESS/M={ess[1:].mean():.6f}; final ||x_T||={norm5[-1]:.6f}")
+sec("Experiment 4: ESS Diagnostic")
+gen=torch.Generator(device=device).manual_seed(5); norm4,ess=simulate_norms(x0,500,sw0,T_sim,gen); ess=ess/500
+print(f"  mean ESS/M={ess[1:].mean():.6f}; final ||x_T||={norm4[-1]:.6f}")
 
 # Consistency
 sec("Consistency checks")
@@ -185,7 +177,7 @@ checks=[("DARE residual",dare_residual<1e-10),("Q_lambda PD",Q_lambda_eigs.min()
 for name,ok in checks: print(f"  {name:<24s}{'PASS' if ok else 'FAIL'}")
 print("  Pending certificate: D_U, epsilon, beta, Zbar_beta, C_beta, M_star")
 
-# Figures — filenames match the current LaTeX.
+# Figures — filenames follow the revised four-experiment layout.
 fig,ax=plt.subplots(figsize=(6.4,4.2))
 for M in [50,200,1000]:
     mn,sd=e1[M]; ax.fill_between(t,np.maximum(mn-sd,0),mn+sd,alpha=.10); ax.plot(t,mn,lw=1.6,label=rf"MPPI $M={M}$")
@@ -206,13 +198,7 @@ axes[0].set_ylabel("$x_2$ (velocity)"); axes[0].legend(fontsize=8); fig.tight_la
 for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig3_phase_portrait.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 
-fig,ax=plt.subplots(figsize=(5.8,4)); ax.plot([r[0] for r in fine],[r[2] for r in fine],"o-"); ax.axhline(.99,ls=":",label=r"Empirical threshold $\hat\rho<0.99$");
-if empirical_M is not None: ax.axvline(empirical_M,ls="--",label=rf"First grid hit $M={empirical_M}$")
-ax.set(xlabel="Sample count $M$",ylabel=r"Empirical $\hat\rho(M)$",title="Experiment 4: Finer Low-$M$ Empirical Sweep"); ax.legend(); ax.grid(alpha=.25); fig.tight_layout()
-for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig4_mstar_comparison.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
-plt.close(fig)
-
-fig,axes=plt.subplots(2,1,figsize=(6.3,5.4),sharex=True); t5=np.arange(norm5.size); axes[0].plot(t5,ess); axes[0].set_ylabel("Normalized ESS"); axes[0].grid(alpha=.2); axes[1].plot(t5,norm5); axes[1].set(xlabel="Time step $k$",ylabel=r"$\|x_k\|_2$"); axes[1].grid(alpha=.2); fig.tight_layout()
-for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig5_ess_diagnostic.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
+fig,axes=plt.subplots(2,1,figsize=(6.3,5.4),sharex=True); t4=np.arange(norm4.size); axes[0].plot(t4,ess); axes[0].set_ylabel("Normalized ESS"); axes[0].set_title("Experiment 4: ESS Diagnostic"); axes[0].grid(alpha=.2); axes[1].plot(t4,norm4); axes[1].set(xlabel="Time step $k$",ylabel=r"$\|x_k\|_2$"); axes[1].grid(alpha=.2); fig.tight_layout()
+for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig4_ess_diagnostic.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 print(f"\nFigures saved to {os.path.abspath(OUTDIR)}")
