@@ -1,8 +1,10 @@
 """P1 MPPI/LTI simulation audit aligned with the repaired theorem.
 
-The finite-sample numerical certificate (D_U, epsilon, beta, Zbar_beta,
-C_beta, M_star) is intentionally left pending until a deterministic bound on
-nominal sequences and the target accuracy/confidence split are fixed.
+The main experiments enforce the bounded nominal-sequence assumption using a
+radial projection with D_U=9.  The current applied action is not clipped; only
+the shifted nominal sequence used as the next sampling center is projected.
+The finite-sample numerical certificate is audited separately in
+finite_sample_certificate_scan.py.
 """
 import argparse, os, time, warnings
 import matplotlib; matplotlib.use("Agg")
@@ -29,7 +31,7 @@ plt.rcParams.update({"font.family":"serif","font.size":11,"axes.spines.top":Fals
 A_np=np.array([[1.,1.],[0.,1.]])
 B_np=np.array([[0.],[1.]])
 Q_np=np.eye(2); R_np=np.array([[0.1]])
-n,m=2,1; N_hor=10; lam=1.; sig_eps=1.; sigma_w_ref=0.10
+n,m=2,1; N_hor=10; lam=1.; sig_eps=1.; sigma_w_ref=0.10; D_U_MAIN=9.0
 P_np=solve_discrete_are(A_np,B_np,Q_np,R_np)
 K_np=np.linalg.solve(R_np+B_np.T@P_np@B_np,B_np.T@P_np@A_np)
 Acl_np=A_np-B_np@K_np
@@ -74,6 +76,7 @@ for k,v in [
     ("K",f"[{K_np[0,0]:.6f}, {K_np[0,1]:.6f}]"),
     ("rho(A_cl)",f"{rho_LQR:.6f}"),("DARE residual",f"{dare_residual:.3e}"),
     ("c",f"{c_const:.6f}"),("C_w^(0), sigma_w=0.10",f"{Cw0_ref:.6f}"),
+    ("D_U (enforced nominal-sequence bound)",f"{D_U_MAIN:.6f}"),
     ("||L_lambda||_2",f"{np.linalg.norm(L_lambda_np,2):.6f}"),
     ("G_lambda",np.array2string(G_lambda_np,precision=6)),
     ("eig(Q_lambda)",np.array2string(Q_lambda_eigs,precision=6)),
@@ -82,14 +85,18 @@ for k,v in [
     ("rho_lambda=sqrt(q_lambda)",f"{rho_lambda:.6f}")]: row(k,v)
 print("  NOTE: rho_lambda is the theorem transient factor after Young's inequality.")
 print("  Finite-sample rho_hat(M) below is diagnostic, not a certificate.")
+print("  Main simulations radially project only the next nominal sampling center.")
 
 # MPPI / simulation
-def mppi_step(x,U_nom,M,gen):
+def mppi_step(x,U_nom,M,gen,D_U=D_U_MAIN):
     eps=torch.randn(M,mN,dtype=torch.float64,device=device,generator=gen)*sig_eps
     U_s=U_nom.unsqueeze(0)+eps; rhs=Ft@x; HU=U_s@H
     costs=(U_s*HU).sum(1)+2*(U_s@rhs); b=costs.min(); w=torch.exp(-(costs-b)/lam); w=w/w.sum()
     U_new=U_nom+(w.unsqueeze(1)*eps).sum(0); u=U_new[:m]
     U_shift=torch.zeros(mN,dtype=torch.float64,device=device); U_shift[:(N_hor-1)*m]=U_new[m:]
+    if D_U is not None:
+        unorm=torch.linalg.norm(U_shift)
+        if float(unorm)>D_U: U_shift=U_shift*(D_U/unorm)
     return u,U_shift,1/(w**2).sum()
 
 def simulate_states(x0,M,sigma_w,T,gen):
@@ -134,13 +141,13 @@ def estimate_decay_rate(M,ntraj=300,T=20,seed=1):
     qh=float(np.median(vals)); return qh,float(np.sqrt(max(qh,0)))
 
 def collect_nominal_sequence_norms(x0,M,sigma_w,T,ntraj,seed):
-    """Collect pre-sampling ||U_bar_k||_2 without applying any projection."""
+    """Collect pre-sampling ||U_bar_k||_2 for the unprojected implementation."""
     gen=torch.Generator(device=device).manual_seed(seed); out=[]
     for _ in range(ntraj):
         x=tt(x0); U_nom=torch.zeros(mN,dtype=torch.float64,device=device)
         for _ in range(T):
             out.append(float(torch.linalg.norm(U_nom)))
-            u,U_nom,_=mppi_step(x,U_nom,M,gen)
+            u,U_nom,_=mppi_step(x,U_nom,M,gen,D_U=None)
             noise=sigma_w*torch.randn(n,dtype=torch.float64,device=device,generator=gen) if sigma_w>0 else torch.zeros(n,dtype=torch.float64,device=device)
             x=A@x+B@u+noise
     return np.asarray(out)
@@ -158,7 +165,7 @@ for M in [50,200,1000]:
     print(f"  M={M:4d}: E||x_T||={mn[-1]:.5f}, std={sd[-1]:.5f}, {time.perf_counter()-st:.2f}s")
 lqr_mean,lqr_std=mc_lqr(x0,sw0,T_sim,N_MC,199)
 print("  The plotted c*rho_lambda^k||x0|| is only the theorem transient term;")
-print("  confidence prefactor and practical residual are pending D_U/epsilon choices.")
+print("  confidence prefactor and practical residual depend on the epsilon/confidence choices.")
 
 # EXP 2
 sec("Experiment 2: True Lyapunov Decay Diagnostic")
@@ -195,15 +202,15 @@ for M,seed in [(50,551),(200,701),(1000,1501)]:
     z=collect_nominal_sequence_norms(x0,M,sw0,T_sim,N_NOM,seed); nominal_norms[M]=z
     p=np.percentile(z,[50,95,99,99.9])
     print(f"  {M:6d} {z.size:9d} {p[0]:9.4f} {p[1]:9.4f} {p[2]:9.4f} {p[3]:9.4f} {z.max():9.4f}")
-print("  Diagnostic only: no D_U is chosen and no projection is applied in this run.")
-print("  Use the upper tail to select a practical deterministic projection radius,")
-print("  then rerun with the projection enforced before evaluating the certificate.")
+print(f"  Diagnostic is deliberately unprojected; the main experiments enforce D_U={D_U_MAIN:g}.")
+print("  The upper tail documents that the safeguard is rarely active in the benchmark.")
 
 # Consistency
 sec("Consistency checks")
 checks=[("DARE residual",dare_residual<1e-10),("Q_lambda PD",Q_lambda_eigs.min()>0),("1/2<=q<1",0.5<=q_lambda<1),("rho^2=q",abs(rho_lambda**2-q_lambda)<1e-12),("Exp2 finite",np.all(np.isfinite(rho_hats))),("Exp5 finite",all(np.all(np.isfinite(z)) for z in nominal_norms.values()))]
 for name,ok in checks: print(f"  {name:<24s}{'PASS' if ok else 'FAIL'}")
-print("  Pending certificate: D_U, epsilon, beta, Zbar_beta, C_beta, M_star")
+print(f"  Enforced implementation bound: D_U={D_U_MAIN:g}")
+print("  Pending certificate choices: epsilon, delta_s, delta_x, beta, Zbar_beta, C_beta, M_star")
 
 # Figures
 fig,ax=plt.subplots(figsize=(6.4,4.2))
