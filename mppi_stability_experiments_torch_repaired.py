@@ -133,6 +133,18 @@ def estimate_decay_rate(M,ntraj=300,T=20,seed=1):
     if not vals: return np.nan,np.nan
     qh=float(np.median(vals)); return qh,float(np.sqrt(max(qh,0)))
 
+def collect_nominal_sequence_norms(x0,M,sigma_w,T,ntraj,seed):
+    """Collect pre-sampling ||U_bar_k||_2 without applying any projection."""
+    gen=torch.Generator(device=device).manual_seed(seed); out=[]
+    for _ in range(ntraj):
+        x=tt(x0); U_nom=torch.zeros(mN,dtype=torch.float64,device=device)
+        for _ in range(T):
+            out.append(float(torch.linalg.norm(U_nom)))
+            u,U_nom,_=mppi_step(x,U_nom,M,gen)
+            noise=sigma_w*torch.randn(n,dtype=torch.float64,device=device,generator=gen) if sigma_w>0 else torch.zeros(n,dtype=torch.float64,device=device)
+            x=A@x+B@u+noise
+    return np.asarray(out)
+
 x0=np.array([5.,5.]); T_sim=80 if args.quick else 200; sw0=sigma_w_ref
 N_MC=40 if args.quick else 300; N_TRAJ=50 if args.quick else 300
 M_SCAN=[10,20,50,100,200,500] if args.quick else [10,20,50,100,200,500,1000,5000,10000]
@@ -163,6 +175,9 @@ inits=rng.standard_normal((npp,n))*2.5+np.array([2.5,2.5])
 def phase(M,seed):
     gen=torch.Generator(device=device).manual_seed(seed); return np.asarray([simulate_states(z,M,sw0,Tpp,gen)[0] for z in inits])
 txy50,txy500=phase(50,2),phase(500,3)
+for M,tr in [(50,txy50),(500,txy500)]:
+    fn=np.linalg.norm(tr[:,-1,:],axis=1)
+    print(f"  M={M:4d}: mean ||x_T||={fn.mean():.5f}, max={fn.max():.5f}, count(||x_T||>5)={(fn>5).sum()}")
 vals,vecs=np.linalg.eigh(Sigma_lqr_ss_np); th=np.linspace(0,2*np.pi,361); circ=np.vstack((np.cos(th),np.sin(th)))
 ellipse=vecs@((2*np.sqrt(np.maximum(vals,0)))[:,None]*circ)
 
@@ -171,13 +186,26 @@ sec("Experiment 4: ESS Diagnostic")
 gen=torch.Generator(device=device).manual_seed(5); norm4,ess=simulate_norms(x0,500,sw0,T_sim,gen); ess=ess/500
 print(f"  mean ESS/M={ess[1:].mean():.6f}; final ||x_T||={norm4[-1]:.6f}")
 
+# EXP 5
+sec("Experiment 5: Unprojected Nominal-Sequence Norm Diagnostic")
+N_NOM=40 if args.quick else 300
+nominal_norms={}
+print(f"  {'M':>6} {'samples':>9} {'p50':>9} {'p95':>9} {'p99':>9} {'p99.9':>9} {'max':>9}")
+for M,seed in [(50,551),(200,701),(1000,1501)]:
+    z=collect_nominal_sequence_norms(x0,M,sw0,T_sim,N_NOM,seed); nominal_norms[M]=z
+    p=np.percentile(z,[50,95,99,99.9])
+    print(f"  {M:6d} {z.size:9d} {p[0]:9.4f} {p[1]:9.4f} {p[2]:9.4f} {p[3]:9.4f} {z.max():9.4f}")
+print("  Diagnostic only: no D_U is chosen and no projection is applied in this run.")
+print("  Use the upper tail to select a practical deterministic projection radius,")
+print("  then rerun with the projection enforced before evaluating the certificate.")
+
 # Consistency
 sec("Consistency checks")
-checks=[("DARE residual",dare_residual<1e-10),("Q_lambda PD",Q_lambda_eigs.min()>0),("1/2<=q<1",0.5<=q_lambda<1),("rho^2=q",abs(rho_lambda**2-q_lambda)<1e-12),("Exp2 finite",np.all(np.isfinite(rho_hats)))]
+checks=[("DARE residual",dare_residual<1e-10),("Q_lambda PD",Q_lambda_eigs.min()>0),("1/2<=q<1",0.5<=q_lambda<1),("rho^2=q",abs(rho_lambda**2-q_lambda)<1e-12),("Exp2 finite",np.all(np.isfinite(rho_hats))),("Exp5 finite",all(np.all(np.isfinite(z)) for z in nominal_norms.values()))]
 for name,ok in checks: print(f"  {name:<24s}{'PASS' if ok else 'FAIL'}")
 print("  Pending certificate: D_U, epsilon, beta, Zbar_beta, C_beta, M_star")
 
-# Figures — filenames follow the revised four-experiment layout.
+# Figures
 fig,ax=plt.subplots(figsize=(6.4,4.2))
 for M in [50,200,1000]:
     mn,sd=e1[M]; ax.fill_between(t,np.maximum(mn-sd,0),mn+sd,alpha=.10); ax.plot(t,mn,lw=1.6,label=rf"MPPI $M={M}$")
@@ -206,5 +234,15 @@ plt.close(fig)
 
 fig,axes=plt.subplots(2,1,figsize=(6.3,5.4),sharex=True); t4=np.arange(norm4.size); axes[0].plot(t4,ess); axes[0].set_ylabel("Normalized ESS"); axes[0].set_title("Experiment 4: ESS Diagnostic"); axes[0].grid(alpha=.2); axes[1].plot(t4,norm4); axes[1].set(xlabel="Time step $k$",ylabel=r"$\|x_k\|_2$"); axes[1].grid(alpha=.2); fig.tight_layout()
 for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig4_ess_diagnostic.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
+plt.close(fig)
+
+fig,ax=plt.subplots(figsize=(6.0,4.2))
+for M in [50,200,1000]:
+    z=np.sort(nominal_norms[M]); ecdf=np.arange(1,z.size+1)/z.size
+    ax.plot(z,ecdf,lw=1.7,label=rf"$M={M}$")
+for p in [0.95,0.99,0.999]: ax.axhline(p,ls=":",lw=1.0)
+ax.set(xlabel=r"Pre-sampling nominal-sequence norm $\|\bar U_k\|_2$",ylabel="Empirical CDF",title="Experiment 5: Nominal-Sequence Norm Diagnostic (no projection)")
+ax.set_ylim(0.9,1.001); ax.legend(); ax.grid(alpha=.2); fig.tight_layout()
+for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig5_nominal_sequence_norm_cdf.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 print(f"\nFigures saved to {os.path.abspath(OUTDIR)}")
