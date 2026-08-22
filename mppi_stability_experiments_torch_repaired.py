@@ -190,11 +190,17 @@ fig,ax=plt.subplots(figsize=(5.9,4.2)); ax.semilogx(M_SCAN,rho_hats,"o-",label=r
 for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig2_decay_rate.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 
-fig,axes=plt.subplots(1,2,figsize=(9.4,4.3),sharey=True)
+fig,axes=plt.subplots(1,2,figsize=(9.4,4.3),sharex=True,sharey=True)
+all_x=np.concatenate([txy50[:,:,0].ravel(),txy500[:,:,0].ravel(),ellipse[0].ravel(),np.array([0.])])
+all_y=np.concatenate([txy50[:,:,1].ravel(),txy500[:,:,1].ravel(),ellipse[1].ravel(),np.array([0.])])
+xpad=.08*(all_x.max()-all_x.min()+1e-12); ypad=.08*(all_y.max()-all_y.min()+1e-12)
+xlim=(all_x.min()-xpad,all_x.max()+xpad); ylim=(all_y.min()-ypad,all_y.max()+ypad)
 for ax,trajs,M in [(axes[0],txy50,50),(axes[1],txy500,500)]:
     for tr in trajs: ax.plot(tr[:,0],tr[:,1],lw=.8,alpha=.35); ax.plot(tr[0,0],tr[0,1],"o",ms=3); ax.plot(tr[-1,0],tr[-1,1],"s",ms=3)
-    ax.plot(ellipse[0],ellipse[1],"--",lw=1.5,label=r"LQR $2\sigma$ steady-state ellipse"); ax.plot(0,0,"k*",ms=10); ax.set(xlabel="$x_1$ (position)",title=rf"$M={M}$"); ax.grid(alpha=.2); ax.set_aspect("equal",adjustable="box")
-axes[0].set_ylabel("$x_2$ (velocity)"); axes[0].legend(fontsize=8); fig.tight_layout()
+    ax.plot(ellipse[0],ellipse[1],"--",lw=1.5,label=r"LQR $2\sigma$ steady-state ellipse"); ax.plot(0,0,"k*",ms=10); ax.set(xlabel="$x_1$ (position)",title=rf"$M={M}$"); ax.grid(alpha=.2); ax.set_xlim(xlim); ax.set_ylim(ylim); ax.set_aspect("equal",adjustable="box")
+axes[0].set_ylabel("$x_2$ (velocity)")
+handles,labels=axes[0].get_legend_handles_labels(); fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(.5,1.02),fontsize=8)
+fig.tight_layout(rect=[0,0,1,.95])
 for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig3_phase_portrait.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 
