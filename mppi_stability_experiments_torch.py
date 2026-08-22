@@ -1,7 +1,7 @@
-"""P1 MPPI/LTI simulation audit aligned with the repaired theorem.
+"""P1 MPPI/LTI canonical paper simulation aligned with the repaired theorem.
 
 The main experiments enforce the bounded nominal-sequence assumption using a
-radial projection with D_U=9.  The current applied action is not clipped; only
+radial projection with D_U=9. The current applied action is not clipped; only
 the shifted nominal sequence used as the next sampling center is projected.
 The finite-sample numerical certificate is audited separately in
 finite_sample_certificate_scan.py.
@@ -15,7 +15,7 @@ from scipy.linalg import solve_discrete_are, solve_discrete_lyapunov
 warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--outdir", default="figures_repaired")
+parser.add_argument("--outdir", default="figures")
 parser.add_argument("--quick", action="store_true")
 args = parser.parse_args(); os.makedirs(args.outdir, exist_ok=True)
 OUTDIR = args.outdir
@@ -68,7 +68,7 @@ A=tt(A_np); B=tt(B_np); H=tt(H_np); Ft=tt(Ft_np)
 def hdr(s): print("\n"+"="*76+"\n  "+s+"\n"+"="*76)
 def sec(s): print("\n"+"-"*76+"\n  "+s+"\n"+"-"*76)
 def row(k,v): print(f"  {k:<45s}{v}")
-hdr("MPPI STABILITY EXPERIMENTS — REPAIRED-THEOREM AUDIT")
+hdr("MPPI STABILITY EXPERIMENTS — CANONICAL REPAIRED VERSION")
 row("Device",str(device)); row("Mode","QUICK" if args.quick else "FULL")
 sec("Analytical parameters")
 for k,v in [
@@ -158,7 +158,7 @@ M_SCAN=[10,20,50,100,200,500] if args.quick else [10,20,50,100,200,500,1000,5000
 t=np.arange(T_sim+1); nominal=c_const*rho_lambda**t*np.linalg.norm(x0)
 
 # EXP 1
-sec("Experiment 1: Bound Envelope and Closed-Loop Response")
+sec("Experiment 1: Closed-Loop Response and Nominal Transient Reference")
 e1={}
 for M in [50,200,1000]:
     st=time.perf_counter(); mn,sd=mc_mppi(x0,M,sw0,T_sim,N_MC,99); e1[M]=(mn,sd)
@@ -210,14 +210,14 @@ sec("Consistency checks")
 checks=[("DARE residual",dare_residual<1e-10),("Q_lambda PD",Q_lambda_eigs.min()>0),("1/2<=q<1",0.5<=q_lambda<1),("rho^2=q",abs(rho_lambda**2-q_lambda)<1e-12),("Exp2 finite",np.all(np.isfinite(rho_hats))),("Exp5 finite",all(np.all(np.isfinite(z)) for z in nominal_norms.values()))]
 for name,ok in checks: print(f"  {name:<24s}{'PASS' if ok else 'FAIL'}")
 print(f"  Enforced implementation bound: D_U={D_U_MAIN:g}")
-print("  Pending certificate choices: epsilon, delta_s, delta_x, beta, Zbar_beta, C_beta, M_star")
+print("  Numerical certificate is audited separately in finite_sample_certificate_scan.py")
 
 # Figures
 fig,ax=plt.subplots(figsize=(6.4,4.2))
 for M in [50,200,1000]:
     mn,sd=e1[M]; ax.fill_between(t,np.maximum(mn-sd,0),mn+sd,alpha=.10); ax.plot(t,mn,lw=1.6,label=rf"MPPI $M={M}$")
 ax.plot(t,nominal,"--",lw=1.8,label=rf"Nominal transient $c\rho_\lambda^k\|x_0\|$ ($\rho_\lambda={rho_lambda:.3f}$)")
-ax.plot(t,lqr_mean,":",lw=1.8,label="LQR Monte Carlo reference"); ax.set(xlabel="Time step $k$",ylabel=r"$\mathbb{E}[\|x_k\|_2]$",title="Experiment 1: Bound Envelope and Closed-Loop Response"); ax.legend(); ax.grid(alpha=.25); fig.tight_layout()
+ax.plot(t,lqr_mean,":",lw=1.8,label="LQR Monte Carlo reference"); ax.set(xlabel="Time step $k$",ylabel=r"$\mathbb{E}[\|x_k\|_2]$",title="Experiment 1: Closed-Loop Response and Nominal Transient Reference"); ax.legend(); ax.grid(alpha=.25); fig.tight_layout()
 for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig1_bound_verification.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
 plt.close(fig)
 
