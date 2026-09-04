@@ -213,16 +213,33 @@ print(f"  Enforced implementation bound: D_U={D_U_MAIN:g}")
 print("  Numerical certificate is audited separately in finite_sample_certificate_scan.py")
 
 # Figures
-fig,ax=plt.subplots(figsize=(6.4,4.2))
+# Paper figures 1 and 2 intentionally use identical canvas size and margins.
+# Their internal titles are omitted because the LaTeX subcaptions provide them.
+PAPER_FIGSIZE=(6.2,3.65)
+PAPER_MARGINS=dict(left=.135,right=.985,bottom=.20,top=.985)
+
+fig,ax=plt.subplots(figsize=PAPER_FIGSIZE)
 for M in [50,200,1000]:
     mn,sd=e1[M]; ax.fill_between(t,np.maximum(mn-sd,0),mn+sd,alpha=.10); ax.plot(t,mn,lw=1.6,label=rf"MPPI $M={M}$")
 ax.plot(t,nominal,"--",lw=1.8,label=rf"Nominal transient $c\rho_\lambda^k\|x_0\|$ ($\rho_\lambda={rho_lambda:.3f}$)")
-ax.plot(t,lqr_mean,":",lw=1.8,label="LQR Monte Carlo reference"); ax.set(xlabel="Time step $k$",ylabel=r"$\mathbb{E}[\|x_k\|_2]$",title="Experiment 1: Closed-Loop Response and Nominal Transient Reference"); ax.legend(); ax.grid(alpha=.25); fig.tight_layout()
-for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig1_bound_verification.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
+ax.plot(t,lqr_mean,":",lw=1.8,label="LQR Monte Carlo reference")
+ax.set(xlabel="Time step $k$",ylabel=r"$\mathbb{E}[\|x_k\|_2]$")
+ax.legend(fontsize=9,handlelength=2.2)
+ax.grid(alpha=.25)
+fig.subplots_adjust(**PAPER_MARGINS)
+for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig1_bound_verification.{ext}"),dpi=150 if ext=="png" else None)
 plt.close(fig)
 
-fig,ax=plt.subplots(figsize=(5.9,4.2)); ax.semilogx(M_SCAN,rho_hats,"o-",label=r"Empirical $\hat\rho(M)$"); ax.axhline(rho_lambda,ls="--",label=rf"Theorem transient $\rho_\lambda={rho_lambda:.3f}$"); ax.axhline(rho_LQR,ls="-.",label=rf"LQR spectral radius $={rho_LQR:.3f}$"); ax.axhline(1,ls=":"); ax.set(xlabel="Sample count $M$ (log scale)",ylabel=r"Empirical $\hat\rho(M)$",title="Experiment 2: True Lyapunov Decay Diagnostic"); ax.legend(); ax.grid(True,which="both",alpha=.2); fig.tight_layout()
-for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig2_decay_rate.{ext}"),bbox_inches="tight",dpi=150 if ext=="png" else None)
+fig,ax=plt.subplots(figsize=PAPER_FIGSIZE)
+ax.semilogx(M_SCAN,rho_hats,"o-",label=r"Empirical $\hat\rho(M)$")
+ax.axhline(rho_lambda,ls="--",label=rf"Theorem transient $\rho_\lambda={rho_lambda:.3f}$")
+ax.axhline(rho_LQR,ls="-.",label=rf"LQR spectral radius $={rho_LQR:.3f}$")
+ax.axhline(1,ls=":")
+ax.set(xlabel="Sample count $M$ (log scale)",ylabel=r"Empirical $\hat\rho(M)$")
+ax.legend(fontsize=9,handlelength=2.2)
+ax.grid(True,which="both",alpha=.2)
+fig.subplots_adjust(**PAPER_MARGINS)
+for ext in ["pdf","png"]: fig.savefig(os.path.join(OUTDIR,f"fig2_decay_rate.{ext}"),dpi=150 if ext=="png" else None)
 plt.close(fig)
 
 fig,axes=plt.subplots(1,2,figsize=(9.4,4.3),sharex=True,sharey=True)
